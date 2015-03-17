@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog" prefer="system">
+    <system systemId="file:/Users/alexbonilla/Documents/RecepcionComprobantesService.wsdl" uri="src/conf/xml-resources/web-service-references/RecepcionComprobantesService_3/wsdl/RecepcionComprobantesService.wsdl"/>
+    <system systemId="file:/Users/alexbonilla/Documents/AutorizacionComprobantes.wsdl" uri="src/conf/xml-resources/web-service-references/AutorizacionComprobantes_1/wsdl/AutorizacionComprobantes.wsdl"/>
+</catalog>

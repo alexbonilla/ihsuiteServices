@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+ <definitions 
+ xmlns="http://schemas.xmlsoap.org/wsdl/" 
+ xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" 
+ xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+ xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" name="Operations" targetNamespace="http://ws.services.ihsuite.iveloper.com/" xmlns:tns="http://ws.services.ihsuite.iveloper.com/" xmlns:wsp="http://www.w3.org/ns/ws-policy" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd" xmlns:wsam="http://www.w3.org/2007/05/addressing/metadata" xmlns:sp="http://docs.oasis-open.org/ws-sx/ws-securitypolicy/200702" xmlns:sc="http://schemas.sun.com/2006/03/wss/server" xmlns:wspp="http://java.sun.com/xml/ns/wsit/policy" 
+ >
+    <message name="CreateLot"/>
+    <message name="CreateLotResponse"/>
+    <message name="AddFilesWithApp"/>
+    <message name="AddFilesWithAppResponse"/>
+    <message name="GetData"/>
+    <message name="GetDataResponse"/>
+    <message name="AddFilesWithAppNoAccessKey"/>
+    <message name="AddFilesWithAppNoAccessKeyResponse"/>
+    <portType name="Operations">
+        <operation name="CreateLot">
+            <input message="tns:CreateLot"/>
+            <output message="tns:CreateLotResponse"/>
+        </operation>
+        <operation name="AddFilesWithApp">
+            <input message="tns:AddFilesWithApp"/>
+            <output message="tns:AddFilesWithAppResponse"/>
+        </operation>
+        <operation name="GetData">
+            <input message="tns:GetData"/>
+            <output message="tns:GetDataResponse"/>
+        </operation>
+        <operation name="AddFilesWithAppNoAccessKey">
+            <input message="tns:AddFilesWithAppNoAccessKey"/>
+            <output message="tns:AddFilesWithAppNoAccessKeyResponse"/>
+        </operation>
+    </portType>
+    <binding name="OperationsPortBinding" type="tns:Operations">
+        <operation name="CreateLot">
+            <input></input>
+            <output></output>
+        </operation>
+        <operation name="AddFilesWithApp">
+            <input></input>
+            <output></output>
+        </operation>
+        <operation name="GetData">
+            <input></input>
+            <output></output>
+        </operation>
+        <operation name="AddFilesWithAppNoAccessKey">
+            <input/>
+            <output/>
+        </operation>
+    </binding>
+    <service name="Operations">
+        <port name="OperationsPort" binding="tns:OperationsPortBinding"/>
+    </service>
+</definitions>
