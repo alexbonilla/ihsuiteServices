@@ -47,14 +47,9 @@ public class ProcessesTimer {
             .getLogger(ProcessesTimer.class.getName());
 
     @Schedule(minute = "*/1", hour = "*")
-    public void runEveryMinute() {
-        log.log(Level.INFO, "running every minute .. now it''s: {0}", new Date().toString());
+    public void runSchedule() {
+        log.log(Level.INFO, "running full process .. now it''s: {0}", new Date().toString());
         fullProcess();
-    }
-
-    @Schedule(minute = "*/5", hour = "*")
-    public void runEveryFiveMinutes() {
-        log.log(Level.INFO, "running every 5 minutes .. now it''s: {0}", new Date().toString());
     }
 
     private void fullProcess() {
@@ -66,7 +61,9 @@ public class ProcessesTimer {
             Collection activeCompanies = companyController.findActiveCompanies(); //devuelve solo activas
             Iterator<Company> itrCompany = activeCompanies.iterator();
             while (itrCompany.hasNext()) {
-                String id = itrCompany.next().getId();
+                Company currentCompany = itrCompany.next();
+                String id = currentCompany.getId();                
+                
                 EntityManagerFactory emfEachEntity = Persistence.createEntityManagerFactory("ihsuite" + id + "PU");
                 LotJpaController lotController = new LotJpaController(utx, emfEachEntity);
                 Collection lotsToProcess = lotController.findCandidatesForProcessing();
@@ -77,6 +74,7 @@ public class ProcessesTimer {
                     lotController.edit(currentLot); //marco que esta siendo procesado para que no sea tomado por otro proceso
 
                     processLogEntry(id, currentLot, Level.INFO.toString(), "fullProcess", "Iniciando procesamiento de lote " + currentLot.getId());
+                    
                     Collection documents = currentLot.getDocumentCollection();
                     Iterator<Document> itrDocuments = documents.iterator();
                     ArrayList<Thread> documentThreads = new ArrayList();
@@ -90,21 +88,15 @@ public class ProcessesTimer {
                         docProcessor.setUserEntityId(id);
                         docProcessor.setTimeToWaitForAuthorization(companySettings.getTimeWaitForAuthorization());
                         docProcessor.setAmbiente(companySettings.getEnvironment().toString());
+                        if(!itrDocuments.hasNext()){
+                            docProcessor.setIsLastDocumentOfLot(true);
+                            docProcessor.setCompanyId(id);
+                        }
                         Thread threadForDocument = new Thread(docProcessor);
                         threadForDocument.start();
                         documentThreads.add(threadForDocument);
                         processLogEntry(id, currentLot, Level.INFO.toString(), "fullProcess", "Procesamiento de documento en marcha " + currentDocument.getDocNum());
                     }
-                    currentLot.setProcessed(Boolean.TRUE);
-                    currentLot.setInProcess(Boolean.FALSE);
-                    processLogEntry(id, currentLot, Level.INFO.toString(), "fullProcess", "Procesamiento de lote en marcha " + currentLot.getId());
-
-                        LotProcessor lotProcessor = new LotProcessor();
-                        lotProcessor.setDocumentThreads(documentThreads);
-                        lotProcessor.setLot(currentLot);
-                        lotProcessor.setLotController(lotController);
-                        Thread threadForLot = new Thread(lotProcessor);
-                        threadForLot.start();  //En este hilo se invoca el metodo de LotProcessor waitToSetLotAsProcessed                                      
                 }
             }
             log.log(Level.INFO, "finishing entities processing .. now it''s: {0}", new Date().toString());

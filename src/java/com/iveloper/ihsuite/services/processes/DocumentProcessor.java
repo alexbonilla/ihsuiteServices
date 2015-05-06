@@ -11,8 +11,17 @@ import com.iveloper.comprobantes.ws.EnvioComprobantesWs;
 import com.iveloper.comprobantes.utils.CertificadosSSL;
 import com.iveloper.comprobantes.utils.WSUtil;
 import com.iveloper.ihsuite.services.entities.Document;
+import com.iveloper.ihsuite.services.entities.Lot;
+import com.iveloper.ihsuite.services.entities.ProcessLog;
 import com.iveloper.ihsuite.services.jpa.DocumentJpaController;
+import com.iveloper.ihsuite.services.jpa.LotJpaController;
+import com.iveloper.ihsuite.services.jpa.ProcessLogJpaController;
+import com.iveloper.ihsuite.services.jpa.exceptions.NonexistentEntityException;
 import com.iveloper.ihsuite.services.jpa.exceptions.RollbackFailureException;
+import com.iveloper.ihsuite.services.ws.Operations;
+import com.microtripit.mandrillapp.lutung.MandrillApi;
+import com.microtripit.mandrillapp.lutung.view.MandrillMessage;
+import com.microtripit.mandrillapp.lutung.view.MandrillMessageStatus;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -20,6 +29,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.naming.Context;
@@ -43,6 +53,8 @@ public class DocumentProcessor implements Runnable {
     private Document document;
     private String userEntityId;
     private String processMode = "Complete";
+    private boolean isLastDocumentOfLot = false;
+    private String companyId = "";
 
     public int getTimeToWaitForAuthorization() {
         return timeToWaitForAuthorization;
@@ -84,6 +96,22 @@ public class DocumentProcessor implements Runnable {
         this.processMode = processMode;
     }
 
+    public boolean isIsLastDocumentOfLot() {
+        return isLastDocumentOfLot;
+    }
+
+    public void setIsLastDocumentOfLot(boolean isLastDocumentOfLot) {
+        this.isLastDocumentOfLot = isLastDocumentOfLot;
+    }
+
+    public String getCompanyId() {
+        return companyId;
+    }
+
+    public void setCompanyId(String companyId) {
+        this.companyId = companyId;
+    }
+
     @Override
     public void run() {
         Logger.getLogger(DocumentProcessor.class.getName()).log(Level.INFO, "Configuraciones de Proceso Completo de Documento");
@@ -100,6 +128,56 @@ public class DocumentProcessor implements Runnable {
             verifyAuthorization();
         }
 
+        if (isLastDocumentOfLot) {
+            try {
+                Lot lot = document.getLotId();
+                lot.setInProcess(false);
+                lot.setProcessed(true);
+                EntityManagerFactory emf = Persistence.createEntityManagerFactory("ihsuite" + userEntityId + "PU");
+                Context c = new InitialContext();
+                UserTransaction utx = (UserTransaction) c.lookup("java:comp/UserTransaction");
+                LotJpaController lotController = new LotJpaController(utx, emf);
+                lotController.edit(lot);
+                processLogEntry(companyId, lot, Level.INFO.toString(), "fullProcess", "Procesamiento de lote finalizado " + lot.getId());
+
+                MandrillApi mandrillApi = new MandrillApi("Wb30-AONNEEZioNKxX9BXQ");
+                MandrillMessage message = new MandrillMessage();
+                message.setSubject("Procesamiento de lote finalizado");
+                message.setHtml("<p>Se ha finalizado el procesamiento del lote " + lot.getId() + ".</p>");
+                message.setAutoText(true);
+                message.setFromEmail("alex@iveloper.com");
+                message.setFromName("Notificaciones InvoiceHub");
+                // add recipients                                        
+                ArrayList<MandrillMessage.Recipient> recipients = new ArrayList<MandrillMessage.Recipient>();
+                MandrillMessage.Recipient recipient = null;
+                recipient = new MandrillMessage.Recipient();
+                recipient.setEmail(document.getNotifyEmail());
+                recipient.setName(document.getNotifyName());
+                recipients.add(recipient);
+                message.setTo(recipients);
+                message.setPreserveRecipients(true);
+                ArrayList<String> tags = new ArrayList<String>();
+                tags.add("invoicehub");
+                tags.add("notificacion");
+                tags.add("admin");
+                message.setTags(tags);
+
+                // send
+                MandrillMessageStatus[] messageStatusReports = mandrillApi.messages().send(message, false);
+
+//                document.setSentEmailId(userEntityId);
+            } catch (NamingException ex) {
+                Logger.getLogger(DocumentProcessor.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (NonexistentEntityException ex) {
+                Logger.getLogger(DocumentProcessor.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (RollbackFailureException ex) {
+                Logger.getLogger(DocumentProcessor.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (Exception ex) {
+                Logger.getLogger(DocumentProcessor.class.getName()).log(Level.SEVERE, null, ex);
+            }
+
+        }
+
     }
 
     private void completeProcess() {
@@ -109,7 +187,7 @@ public class DocumentProcessor implements Runnable {
             UserTransaction utx = (UserTransaction) c.lookup("java:comp/UserTransaction");
             DocumentJpaController documentController = new DocumentJpaController(utx, emf);
 
-            if (document.getDocStatus().equals("NoProcesada")) {
+            if (document.getDocStatus().equals("NO PROCESADO")) {
                 RespuestaSolicitud resultadoRecepcion = enviarComprobante(document, ambiente);
                 Logger.getLogger(DocumentProcessor.class.getName()).log(Level.INFO, "Estado de documento: {0}.", resultadoRecepcion.getEstado());
                 Logger.getLogger(DocumentProcessor.class.getName()).log(Level.INFO, "Detalle: {0}.", EnvioComprobantesWs.obtenerMensajeRespuesta(resultadoRecepcion));
@@ -118,7 +196,7 @@ public class DocumentProcessor implements Runnable {
                 document.setStatusChanged(new Date());
 
                 documentController.edit(document);
-            } else if (document.getDocStatus().equals("RECIBIDA")){
+            } else if (document.getDocStatus().equals("RECIBIDA")) {
                 Logger.getLogger(DocumentProcessor.class.getName()).log(Level.INFO, "El documento {0}  ya estaba recibido.", document.getDocNum());
             }
 
@@ -137,6 +215,32 @@ public class DocumentProcessor implements Runnable {
 
                     documentController.edit(document);
 
+                    MandrillApi mandrillApi = new MandrillApi("Wb30-AONNEEZioNKxX9BXQ");
+                    MandrillMessage message = new MandrillMessage();
+                    message.setSubject("Nuevo Comprobante Electronico");
+                    message.setHtml("<p>Se ha emitido el comprobante " + document.getDocNum() + ". Usted puede descargarlo en <a href='https://dev.rastreototal.com:20004/ihsuitePortal/' target='_blank'>https://dev.rastreototal.com:20004/ihsuitePortal/</a> utilizando su usuario y su password.</p>");
+                    message.setAutoText(true);
+                    message.setFromEmail("invoicehub@iveloper.com");
+                    message.setFromName("Notificaciones InvoiceHub");
+                    // add recipients                                        
+                    ArrayList<MandrillMessage.Recipient> recipients = new ArrayList<MandrillMessage.Recipient>();
+                    MandrillMessage.Recipient recipient = null;
+                    recipient = new MandrillMessage.Recipient();
+                    recipient.setEmail(document.getNotifyEmail());
+                    recipient.setName(document.getNotifyName());
+                    recipients.add(recipient);
+                    message.setTo(recipients);
+                    message.setPreserveRecipients(true);
+                    ArrayList<String> tags = new ArrayList<String>();
+                    tags.add("invoicehub");
+                    tags.add("notificacion");
+                    tags.add("admin");
+                    message.setTags(tags);
+
+                    // send
+                    MandrillMessageStatus[] messageStatusReports = mandrillApi.messages().send(message, false);
+
+//                document.setSentEmailId(userEntityId);
                 } else {
                     document.setDocument(documento);
                     document.setDocStatus(autComprobanteIndividual.getEstado());
@@ -228,5 +332,31 @@ public class DocumentProcessor implements Runnable {
             aut = autorizacion;
         }
         return aut;
+    }
+
+    private void processLogEntry(String userEntityId, Lot lot, String type, String reference, String message) {
+        Logger.getLogger(Operations.class.getName()).log(Level.parse(type), "{0} {1}", new Object[]{reference, message});
+        try {
+
+            EntityManagerFactory emf = Persistence.createEntityManagerFactory("ihsuite" + userEntityId + "PU");
+            Context c = new InitialContext();
+            UserTransaction utx = null;
+            ProcessLogJpaController processLogJpaController = new ProcessLogJpaController(utx, emf);
+            ProcessLog processLog = new ProcessLog();
+            processLog.setId(UUID.randomUUID().toString());
+            processLog.setDateEntered(new Date());
+            processLog.setLotId(lot);
+            processLog.setType(type);
+            processLog.setReference("Processes Timer " + reference);
+            processLog.setMessage(message);
+
+            processLogJpaController.create(processLog);
+        } catch (NamingException ex) {
+            Logger.getLogger(Operations.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (RollbackFailureException ex) {
+            Logger.getLogger(Operations.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (Exception ex) {
+            Logger.getLogger(Operations.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 }
